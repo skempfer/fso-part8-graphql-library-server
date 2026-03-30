@@ -1,11 +1,14 @@
 const { GraphQLError } = require('@apollo/server')
 const jwt = require('jsonwebtoken')
+const { PubSub } = require('graphql-subscriptions')
 const Book = require('../models/Book')
 const Author = require('../models/Author')
 const User = require('../models/User')
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret'
 const PASSWORD = 'secret'
+const BOOK_ADDED = 'BOOK_ADDED'
+const pubsub = new PubSub()
 
 const handleValidationError = (error) => {
   if (error.name === 'ValidationError') {
@@ -75,6 +78,9 @@ const resolvers = {
 
         await book.save()
         await book.populate('author')
+
+        pubsub.publish(BOOK_ADDED, { bookAdded: book })
+
         return book
       } catch (error) {
         handleValidationError(error)
@@ -126,6 +132,11 @@ const resolvers = {
       const token = jwt.sign({ id: user._id }, JWT_SECRET)
 
       return { value: token }
+    },
+  },
+  Subscription: {
+    bookAdded: {
+      subscribe: () => pubsub.asyncIterableIterator([BOOK_ADDED]),
     },
   },
   Author: {
