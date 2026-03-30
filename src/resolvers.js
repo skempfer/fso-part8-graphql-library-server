@@ -1,5 +1,22 @@
+const { GraphQLError } = require('@apollo/server')
 const Book = require('../models/Book')
 const Author = require('../models/Author')
+
+const handleValidationError = (error) => {
+  if (error.name === 'ValidationError') {
+    const messages = Object.values(error.errors).map((err) => err.message)
+    throw new GraphQLError(messages.join(', '), {
+      extensions: { code: 'BAD_USER_INPUT' },
+    })
+  }
+  if (error.name === 'MongoServerError' && error.code === 11000) {
+    const field = Object.keys(error.keyPattern)[0]
+    throw new GraphQLError(`${field} must be unique`, {
+      extensions: { code: 'BAD_USER_INPUT' },
+    })
+  }
+  throw error
+}
 
 const resolvers = {
   Query: {
@@ -27,34 +44,42 @@ const resolvers = {
   },
   Mutation: {
     addBook: async (root, args) => {
-      let author = await Author.findOne({ name: args.author })
+      try {
+        let author = await Author.findOne({ name: args.author })
 
-      if (!author) {
-        author = new Author({ name: args.author })
-        await author.save()
+        if (!author) {
+          author = new Author({ name: args.author })
+          await author.save()
+        }
+
+        const book = new Book({
+          title: args.title,
+          published: args.published,
+          genres: args.genres,
+          author: author._id,
+        })
+
+        await book.save()
+        await book.populate('author')
+        return book
+      } catch (error) {
+        handleValidationError(error)
       }
-
-      const book = new Book({
-        title: args.title,
-        published: args.published,
-        genres: args.genres,
-        author: author._id,
-      })
-
-      await book.save()
-      await book.populate('author')
-      return book
     },
     editAuthor: async (root, args) => {
-      const author = await Author.findOne({ name: args.name })
+      try {
+        const author = await Author.findOne({ name: args.name })
 
-      if (!author) {
-        return null
+        if (!author) {
+          return null
+        }
+
+        author.born = args.setBornTo
+        await author.save()
+        return author
+      } catch (error) {
+        handleValidationError(error)
       }
-
-      author.born = args.setBornTo
-      await author.save()
-      return author
     },
   },
   Author: {
