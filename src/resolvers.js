@@ -1,6 +1,11 @@
 const { GraphQLError } = require('@apollo/server')
+const jwt = require('jsonwebtoken')
 const Book = require('../models/Book')
 const Author = require('../models/Author')
+const User = require('../models/User')
+
+const JWT_SECRET = process.env.JWT_SECRET || 'secret'
+const PASSWORD = 'secret'
 
 const handleValidationError = (error) => {
   if (error.name === 'ValidationError') {
@@ -41,9 +46,18 @@ const resolvers = {
     allAuthors: async () => {
       return await Author.find({})
     },
+    me: async (root, args, context) => {
+      return context.currentUser
+    },
   },
   Mutation: {
-    addBook: async (root, args) => {
+    addBook: async (root, args, context) => {
+      if (!context.currentUser) {
+        throw new GraphQLError('Not authenticated', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        })
+      }
+
       try {
         let author = await Author.findOne({ name: args.author })
 
@@ -66,7 +80,13 @@ const resolvers = {
         handleValidationError(error)
       }
     },
-    editAuthor: async (root, args) => {
+    editAuthor: async (root, args, context) => {
+      if (!context.currentUser) {
+        throw new GraphQLError('Not authenticated', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        })
+      }
+
       try {
         const author = await Author.findOne({ name: args.name })
 
@@ -80,6 +100,32 @@ const resolvers = {
       } catch (error) {
         handleValidationError(error)
       }
+    },
+    createUser: async (root, args) => {
+      try {
+        const user = new User({
+          username: args.username,
+          favoriteGenre: args.favoriteGenre,
+        })
+
+        await user.save()
+        return user
+      } catch (error) {
+        handleValidationError(error)
+      }
+    },
+    login: async (root, args) => {
+      const user = await User.findOne({ username: args.username })
+
+      if (!user || args.password !== PASSWORD) {
+        throw new GraphQLError('Invalid credentials', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        })
+      }
+
+      const token = jwt.sign({ id: user._id }, JWT_SECRET)
+
+      return { value: token }
     },
   },
   Author: {
