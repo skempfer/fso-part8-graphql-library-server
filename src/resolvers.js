@@ -1,3 +1,4 @@
+const { randomUUID } = require('node:crypto')
 const { authors, books } = require('./data')
 
 const resolvers = {
@@ -18,6 +19,29 @@ const resolvers = {
       return filteredBooks
     },
     allAuthors: () => authors,
+  },
+  Mutation: {
+    addBook: (root, args) => {
+      const authorExists = authors.some((author) => author.name === args.author)
+
+      if (!authorExists) {
+        authors.push({
+          name: args.author,
+          id: randomUUID(),
+        })
+      }
+
+      const newBook = {
+        title: args.title,
+        author: args.author,
+        published: args.published,
+        genres: args.genres,
+        id: randomUUID(),
+      }
+
+      books.push(newBook)
+      return newBook
+    },
   },
   Author: {
     bookCount: (root) => books.filter((book) => book.author === root.name).length,
